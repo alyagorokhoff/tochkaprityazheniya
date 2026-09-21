@@ -105,13 +105,13 @@ jobs:
           import re
 
           root = Path("out")
-          link_pattern = re.compile(r'<link[^>]+rel=["\\']stylesheet["\\'][^>]*href=["\\']([^"\\']+)["\\'][^>]*>|<link[^>]+href=["\\']([^"\\']+)["\\'][^>]*rel=["\\']stylesheet["\\'][^>]*>')
+          link_pattern = re.compile(r'<link[^>]*href="([^"]+\\.css)"[^>]*>')
 
           for html_path in root.rglob("*.html"):
               html = html_path.read_text(encoding="utf-8")
 
               def replace_link(match):
-                  href = match.group(1) or match.group(2)
+                  href = match.group(1)
                   prefix = "/tochkaprityazheniya/"
                   if not href.startswith(prefix):
                       return match.group(0)
