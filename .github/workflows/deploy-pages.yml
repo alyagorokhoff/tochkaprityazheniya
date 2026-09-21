@@ -1,0 +1,108 @@
+name: Deploy Point of Attraction to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - github-pages
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout exact source from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Prepare temporary GitHub Pages build config
+        shell: bash
+        run: |
+          cat > next.config.ts <<'EOF'
+          import type { NextConfig } from "next";
+
+          const repo = "tochkaprityazheniya";
+
+          const nextConfig: NextConfig = {
+            output: "export",
+            trailingSlash: true,
+            basePath: `/${repo}`,
+            assetPrefix: `/${repo}/`,
+            images: { unoptimized: true },
+            typescript: { ignoreBuildErrors: true },
+          };
+
+          export default nextConfig;
+          EOF
+
+      - name: Build static export
+        run: npx next build
+
+      - name: Fix root-relative public asset paths for project Pages
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("out")
+          prefix = "/tochkaprityazheniya"
+
+          replacements = {
+              '"/assets/': f'"{prefix}/assets/',
+              '"/reviews/': f'"{prefix}/reviews/',
+              '"/constellation/': f'"{prefix}/constellation/',
+              '"/fonts/': f'"{prefix}/fonts/',
+              '"/favicon.svg': f'"{prefix}/favicon.svg',
+              "'/assets/": f"'{prefix}/assets/",
+              "'/reviews/": f"'{prefix}/reviews/",
+              "'/constellation/": f"'{prefix}/constellation/",
+              "'/fonts/": f"'{prefix}/fonts/",
+              "'/favicon.svg": f"'{prefix}/favicon.svg",
+              'url("/assets/': f'url("{prefix}/assets/',
+              'url("/fonts/': f'url("{prefix}/fonts/',
+              "url('/assets/": f"url('{prefix}/assets/",
+              "url('/fonts/": f"url('{prefix}/fonts/",
+          }
+
+          for path in root.rglob("*"):
+              if not path.is_file() or path.suffix not in {".html", ".css", ".js"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
