@@ -104,7 +104,6 @@ jobs:
           from pathlib import Path
           import base64
           import mimetypes
-          import re
           import sys
 
           root = Path("out")
@@ -119,40 +118,51 @@ jobs:
               ".woff2": "font/woff2",
           }
 
-          def data_uri(url):
-              if not url.startswith(prefix):
-                  return None
-              relative = url[len(prefix):]
-              path = root / relative
-              if not path.is_file():
-                  return None
+          def encode_file(path):
               mime = extra_types.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
               encoded = base64.b64encode(path.read_bytes()).decode("ascii")
               return f"data:{mime};base64,{encoded}"
 
-          # Embed CSS background images and local fonts.
-          css_url = re.compile(r'url\\((["\\']?)(/tochkaprityazheniya/(?:assets|fonts)/[^)"\\']+)\\1\\)')
+          css_assets = []
+          for folder in ("assets", "fonts"):
+              folder_path = root / folder
+              if folder_path.exists():
+                  css_assets.extend(path for path in folder_path.rglob("*") if path.is_file())
+
           for css_path in root.rglob("*.css"):
               css = css_path.read_text(encoding="utf-8")
-              def replace_css(match):
-                  uri = data_uri(match.group(2))
-                  return f'url("{uri}")' if uri else match.group(0)
-              css = css_url.sub(replace_css, css)
+              for asset in css_assets:
+                  relative = asset.relative_to(root).as_posix()
+                  url = prefix + relative
+                  uri = encode_file(asset)
+                  css = css.replace(f'url("{url}")', f'url("{uri}")')
+                  css = css.replace(f"url('{url}')", f'url("{uri}")')
+                  css = css.replace(f"url({url})", f'url("{uri}")')
               css_path.write_text(css, encoding="utf-8")
 
-          # Embed all visible public images directly into HTML.
-          src_pattern = re.compile(r'(?P<before>\\bsrc=")(?P<url>/tochkaprityazheniya/(?:assets|reviews|constellation)/[^"]+)(?P<after>")')
+          html_assets = []
+          for folder in ("assets", "reviews", "constellation"):
+              folder_path = root / folder
+              if folder_path.exists():
+                  html_assets.extend(path for path in folder_path.rglob("*") if path.is_file())
+
+          changed = 0
           for html_path in root.rglob("*.html"):
               html = html_path.read_text(encoding="utf-8")
-              def replace_src(match):
-                  uri = data_uri(match.group("url"))
-                  if not uri:
-                      return match.group(0)
-                  return match.group("before") + uri + match.group("after")
-              html = src_pattern.sub(replace_src, html)
+              before = html
+              for asset in html_assets:
+                  relative = asset.relative_to(root).as_posix()
+                  url = prefix + relative
+                  html = html.replace(f'src="{url}"', f'src="{encode_file(asset)}"')
+              if html != before:
+                  changed += 1
               html_path.write_text(html, encoding="utf-8")
 
-          print("Embedded visual assets and fonts into generated Pages output.")
+          if changed == 0:
+              print("No visible HTML images were embedded.")
+              sys.exit(1)
+
+          print(f"Embedded visible images into {changed} HTML files and embedded CSS assets.")
           PY
 
       - name: Inline compiled CSS for GitHub Pages reliability
