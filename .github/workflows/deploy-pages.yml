@@ -97,6 +97,35 @@ jobs:
               path.write_text(text, encoding="utf-8")
           PY
 
+      - name: Inline compiled CSS for GitHub Pages reliability
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("out")
+          link_pattern = re.compile(r'<link[^>]+rel=["\\']stylesheet["\\'][^>]*href=["\\']([^"\\']+)["\\'][^>]*>|<link[^>]+href=["\\']([^"\\']+)["\\'][^>]*rel=["\\']stylesheet["\\'][^>]*>')
+
+          for html_path in root.rglob("*.html"):
+              html = html_path.read_text(encoding="utf-8")
+
+              def replace_link(match):
+                  href = match.group(1) or match.group(2)
+                  prefix = "/tochkaprityazheniya/"
+                  if not href.startswith(prefix):
+                      return match.group(0)
+                  relative = href[len(prefix):]
+                  css_path = root / relative
+                  if not css_path.exists() or css_path.suffix != ".css":
+                      return match.group(0)
+                  css = css_path.read_text(encoding="utf-8")
+                  return "<style data-github-pages-inline-css>" + css + "</style>"
+
+              html = link_pattern.sub(replace_link, html)
+              html_path.write_text(html, encoding="utf-8")
+          PY
+
       - name: Protect Next static directory from Jekyll
         run: touch out/.nojekyll
 
@@ -129,6 +158,11 @@ jobs:
           if bad:
               print("Unprefixed GitHub Pages asset paths remain:")
               print("\\n".join(bad[:100]))
+              sys.exit(1)
+
+          index_html = (root / "index.html").read_text(encoding="utf-8")
+          if "data-github-pages-inline-css" not in index_html:
+              print("Compiled CSS was not inlined into index.html")
               sys.exit(1)
 
           required = [
