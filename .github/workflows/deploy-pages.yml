@@ -102,28 +102,33 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
+          import sys
 
           root = Path("out")
-          link_pattern = re.compile(r'<link[^>]*href="([^"]+\\.css)"[^>]*>')
+          css_files = sorted((root / "_next" / "static" / "chunks").glob("*.css"))
+          if not css_files:
+              print("No compiled CSS files found.")
+              sys.exit(1)
 
+          css = "\n".join(path.read_text(encoding="utf-8") for path in css_files)
+          style = "<style data-github-pages-inline-css>" + css + "</style>"
+
+          changed = 0
           for html_path in root.rglob("*.html"):
               html = html_path.read_text(encoding="utf-8")
-
-              def replace_link(match):
-                  href = match.group(1)
-                  prefix = "/tochkaprityazheniya/"
-                  if not href.startswith(prefix):
-                      return match.group(0)
-                  relative = href[len(prefix):]
-                  css_path = root / relative
-                  if not css_path.exists() or css_path.suffix != ".css":
-                      return match.group(0)
-                  css = css_path.read_text(encoding="utf-8")
-                  return "<style data-github-pages-inline-css>" + css + "</style>"
-
-              html = link_pattern.sub(replace_link, html)
+              if "data-github-pages-inline-css" in html:
+                  continue
+              if "</head>" not in html:
+                  continue
+              html = html.replace("</head>", style + "</head>", 1)
               html_path.write_text(html, encoding="utf-8")
+              changed += 1
+
+          if changed == 0:
+              print("No HTML files received inline CSS.")
+              sys.exit(1)
+
+          print(f"Inlined compiled CSS into {changed} HTML files.")
           PY
 
       - name: Protect Next static directory from Jekyll
