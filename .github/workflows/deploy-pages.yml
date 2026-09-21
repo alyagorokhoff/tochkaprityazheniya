@@ -89,12 +89,62 @@ jobs:
           }
 
           for path in root.rglob("*"):
-              if not path.is_file() or path.suffix not in {".html", ".css", ".js"}:
+              if not path.is_file() or path.suffix not in {".html", ".css", ".js", ".txt"}:
                   continue
               text = path.read_text(encoding="utf-8")
               for old, new in replacements.items():
                   text = text.replace(old, new)
               path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Protect Next static directory from Jekyll
+        run: touch out/.nojekyll
+
+      - name: Verify exported asset paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          root = Path("out")
+          bad = []
+          patterns = [
+              r'(?<!tochkaprityazheniya)/assets/',
+              r'(?<!tochkaprityazheniya)/reviews/',
+              r'(?<!tochkaprityazheniya)/constellation/',
+              r'(?<!tochkaprityazheniya)/fonts/',
+              r'(?<!tochkaprityazheniya)/favicon\\.svg',
+          ]
+
+          for path in root.rglob("*"):
+              if not path.is_file() or path.suffix not in {".html", ".css", ".js", ".txt"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for pattern in patterns:
+                  if re.search(pattern, text):
+                      bad.append(f"{path}: {pattern}")
+
+          if bad:
+              print("Unprefixed GitHub Pages asset paths remain:")
+              print("\\n".join(bad[:100]))
+              sys.exit(1)
+
+          required = [
+              root / "index.html",
+              root / "_next",
+              root / "assets" / "hero-cosmic.webp",
+              root / "reviews" / "review-01.webp",
+              root / "constellation" / "archetype.png",
+          ]
+          missing = [str(path) for path in required if not path.exists()]
+          if missing:
+              print("Missing exported files:")
+              print("\\n".join(missing))
+              sys.exit(1)
+
+          print("GitHub Pages export paths verified.")
           PY
 
       - name: Setup Pages
