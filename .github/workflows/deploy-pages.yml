@@ -147,22 +147,25 @@ jobs:
                   html_assets.extend(path for path in folder_path.rglob("*") if path.is_file())
 
           changed = 0
-          for html_path in root.rglob("*.html"):
-              html = html_path.read_text(encoding="utf-8")
-              before = html
+          # Replace image URLs everywhere in HTML and Next route payloads.
+          # This includes the serialized hydration data that would otherwise
+          # restore root-relative image paths after the first paint.
+          for content_path in [*root.rglob("*.html"), *root.rglob("*.txt")]:
+              text = content_path.read_text(encoding="utf-8")
+              before = text
               for asset in html_assets:
                   relative = asset.relative_to(root).as_posix()
                   url = prefix + relative
-                  html = html.replace(f'src="{url}"', f'src="{encode_file(asset)}"')
-              if html != before:
+                  text = text.replace(url, encode_file(asset))
+              if text != before:
                   changed += 1
-              html_path.write_text(html, encoding="utf-8")
+              content_path.write_text(text, encoding="utf-8")
 
           if changed == 0:
-              print("No visible HTML images were embedded.")
+              print("No visible image references were embedded.")
               sys.exit(1)
 
-          print(f"Embedded visible images into {changed} HTML files and embedded CSS assets.")
+          print(f"Embedded visible image references into {changed} HTML/payload files and embedded CSS assets.")
           PY
 
       - name: Inline compiled CSS for GitHub Pages reliability
@@ -234,8 +237,8 @@ jobs:
               sys.exit(1)
 
           index_html = (root / "index.html").read_text(encoding="utf-8")
-          if 'src="/tochkaprityazheniya/reviews/' in index_html or 'src="/tochkaprityazheniya/constellation/' in index_html:
-              print("Visible images are still external instead of embedded.")
+          if "/tochkaprityazheniya/reviews/" in index_html or "/tochkaprityazheniya/constellation/" in index_html:
+              print("Visible image URLs remain in HTML/hydration payload.")
               sys.exit(1)
           if "data:image/webp;base64," not in index_html or "data:image/png;base64," not in index_html:
               print("Expected embedded review/constellation images were not found.")
