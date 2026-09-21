@@ -84,6 +84,8 @@ jobs:
               'url("/fonts/': f'url("{prefix}/fonts/',
               "url('/assets/": f"url('{prefix}/assets/",
               "url('/fonts/": f"url('{prefix}/fonts/",
+              'url(/assets/': f'url({prefix}/assets/',
+              'url(/fonts/': f'url({prefix}/fonts/',
           }
 
           for path in root.rglob("*"):
